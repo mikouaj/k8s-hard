@@ -10,3 +10,4 @@ bin/
 *~
 .*.swp
 .vscode
+.terraform.lock.hcl

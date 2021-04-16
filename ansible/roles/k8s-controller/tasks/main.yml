@@ -1,0 +1,3 @@
+- name: store external ip address
+  ansible.builtin.shell:
+    cmd: echo {{ ansible_host }} >> /tmp/external_ip.txt
