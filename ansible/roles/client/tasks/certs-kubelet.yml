@@ -1,0 +1,14 @@
+---
+- name: Copy kubelet CSR file template
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/kubelet-csr.json"
+    dest: "{{ cert_dir }}/kubelet-csr-{{ item.item }}.json"
+- name: "Update kubelet CSR file"
+  ansible.builtin.lineinfile:
+    path: "{{ cert_dir }}/kubelet-csr-{{ item.item }}.json"
+    regexp: '^(.*)"CN":'
+    line: "  \"CN\": \"system:node:{{ item.item }}\","
+- name: Generate Kubernetes API Server certificate
+  ansible.builtin.shell:
+    cmd: "{{ bin_dir }}/cfssl gencert -ca {{ cert_dir }}/ca.pem -ca-key {{ cert_dir }}/ca-key.pem -config {{ role_path }}/files/ca-config.json -hostname={{ item.item }},{{ hostvars[item.item].ip_int_address }},{{ hostvars[item.item].ansible_host }} -profile=kubernetes {{ cert_dir }}/kubelet-csr-{{ item.item }}.json | {{ bin_dir }}/cfssljson -bare {{ item.item }}"
+    chdir: "{{ cert_dir }}"

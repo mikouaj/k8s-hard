@@ -1,0 +1,53 @@
+- name: Create bin directory
+  ansible.builtin.file:
+    path: "{{ bin_dir }}"
+    state: directory
+    mode: '0755'
+- name: Install CFSSL
+  block: 
+    - name: Check if CFSLL exists
+      ansible.builtin.stat:
+        path: "{{ bin_dir }}/cfssl"
+      register: cfssl_stat_result
+    - name: Download CFSSL
+      ansible.builtin.get_url:
+        url: https://storage.googleapis.com/kubernetes-the-hard-way/cfssl/1.4.1/linux/cfssl
+        dest: "{{ bin_dir }}"
+      when: not cfssl_stat_result.stat.exists
+    - name: Make CFSSL executable
+      ansible.builtin.file:
+        path: "{{ bin_dir }}/cfssl"
+        state: file
+        mode: '0755'
+- name: Install CFSSL JSON
+  block: 
+    - name: Check if CFSLL JSON exists
+      ansible.builtin.stat:
+        path: "{{ bin_dir }}/cfssljson"
+      register: cfssljson_stat_result
+    - name: Download CFSSL JSON
+      ansible.builtin.get_url:
+        url: https://storage.googleapis.com/kubernetes-the-hard-way/cfssl/1.4.1/linux/cfssljson
+        dest: "{{ bin_dir }}"
+      when: not cfssljson_stat_result.stat.exists
+    - name: Make CFSSL JSON executable
+      ansible.builtin.file:
+        path: "{{ bin_dir }}/cfssljson"
+        state: file
+        mode: '0755'
+- name: Install KUBECTL
+  block: 
+    - name: Check if KUBECTL exists
+      ansible.builtin.stat:
+        path: "{{ bin_dir }}/kubectl"
+      register: kubectl_stat_result
+    - name: Download KUBECTL
+      ansible.builtin.get_url:
+        url: https://storage.googleapis.com/kubernetes-release/release/v1.18.6/bin/linux/amd64/kubectl
+        dest: "{{ bin_dir }}"
+      when: not kubectl_stat_result.stat.exists
+    - name: Make KUBECTL executable
+      ansible.builtin.file:
+        path: "{{ bin_dir }}/kubectl"
+        state: file
+        mode: '0755'

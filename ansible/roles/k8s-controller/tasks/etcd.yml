@@ -1,0 +1,138 @@
+- name: Create etcd initial cluster fact
+  block:
+    - name: Create initial cluster fact
+      ansible.builtin.set_fact:
+        etcd_initial_cluster: []
+    - name: Update initial cluster fact with controllers
+      ansible.builtin.set_fact:
+        etcd_initial_cluster: "{{ etcd_initial_cluster + [item ~ '=https://' ~ hostvars[item].ip_int_address ~ ':2380'] }}"
+      with_items: "{{ groups['k8s-controllers']}}"
+    - name: Joint initial cluster fact
+      ansible.builtin.set_fact:
+        etcd_initial_cluster: "{{ etcd_initial_cluster|join(',') }}"
+
+- name: Create etcd servers fact
+  block:
+    - name: Create etcd servers fact
+      ansible.builtin.set_fact:
+        etcd_servers: []
+    - name: Update etcd servers fact with controllers
+      ansible.builtin.set_fact:
+        etcd_servers: "{{ etcd_servers + ['https://' ~ hostvars[item].ip_int_address ~ ':2379'] }}"
+      with_items: "{{ groups['k8s-controllers']}}"
+    - name: Join etcd servers fact
+      ansible.builtin.set_fact:
+        etcd_servers: "{{ etcd_servers|join(',') }}"
+
+- name: Check if etcd is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/etcd
+  register: etcd_stat
+- name: Install etcd
+  block:
+    - name: Download etcd
+      ansible.builtin.get_url:
+        url: https://github.com/etcd-io/etcd/releases/download/v3.4.10/etcd-v3.4.10-linux-amd64.tar.gz
+        dest: /tmp
+    - name: Unpack etcd
+      ansible.builtin.shell:
+        cmd: tar zxf etcd-v3.4.10-linux-amd64.tar.gz
+        chdir: /tmp
+    - name: Copy etcd binaries to bin dir
+      ansible.builtin.shell:
+        cmd: mv etcd-v3.4.10-linux-amd64/etcd* /usr/local/bin/
+        chdir: /tmp
+      become: yes
+  when: not etcd_stat.stat.exists
+
+- name: Create etcd config directory
+  ansible.builtin.file:
+    path: "/etc/etcd"
+    state: directory
+  become: yes
+
+- name: Create etcd lib directory
+  ansible.builtin.file:
+    path: "/var/lib/etcd"
+    state: directory
+    mode: '0700'
+  become: yes
+
+- name: Copy CA cert
+  ansible.builtin.copy:
+    src: "{{ cert_dir }}/ca.pem"
+    dest: "/etc/etcd/"
+    force: no
+  become: yes
+
+- name: Copy kubernetes cert
+  ansible.builtin.copy:
+    src: "{{ cert_dir }}/kubernetes.pem"
+    dest: "/etc/etcd/"
+    force: no
+  become: yes
+
+- name: Copy kubernetes key
+  ansible.builtin.copy:
+    src: "{{ cert_dir }}/kubernetes-key.pem"
+    dest: "/etc/etcd/"
+    force: no
+  become: yes
+
+- name: Check presence of etcd service file
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/etcd.service"
+  register: etcd_service_file_stat
+
+- name: Create etcd service file
+  block:
+    - name: Copy etc service file template
+      ansible.builtin.copy:
+        src: "{{ role_path }}/files/etcd.service"
+        dest: "/etc/systemd/system/"
+    - name: Replace in etc service file - name
+      ansible.builtin.lineinfile:
+        path: "/etc/systemd/system/etcd.service"
+        regexp: '^(.*)--name '
+        line: '\1--name {{ inventory_hostname }} \\'
+        backrefs: yes
+    - name: Replace in etc service file - initial-advertise-peer
+      ansible.builtin.lineinfile:
+        path: "/etc/systemd/system/etcd.service"
+        regexp: '^(.*)--initial-advertise-peer-urls '
+        line: '\1--initial-advertise-peer-urls https://{{ ip_int_address }}:2380 \\'
+        backrefs: yes
+    - name: Replace in etc service file - listen-peer-urls
+      ansible.builtin.lineinfile:
+        path: "/etc/systemd/system/etcd.service"
+        regexp: '^(.*)--listen-peer-urls '
+        line: '\1--listen-peer-urls https://{{ ip_int_address }}:2380 \\'
+        backrefs: yes
+    - name: Replace in etc service file - listen-client-urls
+      ansible.builtin.lineinfile:
+        path: "/etc/systemd/system/etcd.service"
+        regexp: '^(.*)--listen-client-urls '
+        line: '\1--listen-client-urls https://{{ ip_int_address }}:2379,https://127.0.0.1:2379 \\'
+        backrefs: yes
+    - name: Replace in etc service file - advertise-client-urls
+      ansible.builtin.lineinfile:
+        path: "/etc/systemd/system/etcd.service"
+        regexp: '^(.*)--advertise-client-urls '
+        line: '\1--advertise-client-urls https://{{ ip_int_address }}:2379 \\'
+        backrefs: yes
+    - name: Replace in etc service file - initial-cluster
+      ansible.builtin.lineinfile:
+        path: "/etc/systemd/system/etcd.service"
+        regexp: '^(.*)--initial-cluster '
+        line: '\1--initial-cluster {{ etcd_initial_cluster }} \\'
+        backrefs: yes
+  become: yes
+  when: not etcd_service_file_stat.stat.exists
+
+- name: Run etcd service
+  ansible.builtin.systemd:
+    name: etcd
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes

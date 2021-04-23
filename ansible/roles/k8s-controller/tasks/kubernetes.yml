@@ -1,0 +1,206 @@
+- name: Check existence of k8s binaries
+  ansible.builtin.stat:
+    path: /usr/local/bin/{{ item }}
+  register: k8sbin_stat
+  with_items:
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+    - kubectl
+
+- name: Install k8s binaries
+  include_tasks: kubernetes-binary.yml
+  when: not item.stat.exists
+  loop: "{{ k8sbin_stat.results }}"
+
+- name: Copy k8s configuration files
+  block:
+    - name: Create kubernetes lib directory
+      ansible.builtin.file:
+        path: "/var/lib/kubernetes"
+        state: directory
+    - name: Create kubernetes etc config directory
+      ansible.builtin.file:
+        path: "/etc/kubernetes/config"
+        state: directory
+    - name: Copy CA cert
+      ansible.builtin.copy:
+        src: "{{ cert_dir }}/ca.pem"
+        dest: "/var/lib/kubernetes"
+        force: no
+    - name: Copy CA key
+      ansible.builtin.copy:
+        src: "{{ cert_dir }}/ca-key.pem"
+        dest: "/var/lib/kubernetes"
+        force: no
+    - name: Copy kubernetes cert
+      ansible.builtin.copy:
+        src: "{{ cert_dir }}/kubernetes.pem"
+        dest: "/var/lib/kubernetes"
+        force: no
+      become: yes
+    - name: Copy kubernetes key
+      ansible.builtin.copy:
+        src: "{{ cert_dir }}/kubernetes-key.pem"
+        dest: "/var/lib/kubernetes"
+        force: no
+    - name: Copy Service account cert
+      ansible.builtin.copy:
+        src: "{{ cert_dir }}/service-account.pem"
+        dest: "/var/lib/kubernetes"
+        force: no
+    - name: Copy Service account key
+      ansible.builtin.copy:
+        src: "{{ cert_dir }}/service-account-key.pem"
+        dest: "/var/lib/kubernetes"
+        force: no
+    - name: Copy encryption config
+      ansible.builtin.copy:
+        src: "{{ cert_dir }}/encryption-config.yml"
+        dest: "/var/lib/kubernetes"
+        force: no
+    - name: Copy controller-manager config
+      ansible.builtin.copy:
+        src: "{{ cert_dir }}/kube-controller-manager.kubeconfig"
+        dest: "/var/lib/kubernetes"
+        force: no
+    - name: Copy scheduler kube config
+      ansible.builtin.copy:
+        src: "{{ cert_dir }}/kube-scheduler.kubeconfig"
+        dest: "/var/lib/kubernetes"
+        force: no
+    - name: Copy scheduler yml config
+      ansible.builtin.copy:
+        src: "{{ role_path }}/files/kube-scheduler.yml"
+        dest: "/etc/kubernetes/config"
+        force: no
+    - name: Copy admin kube config
+      ansible.builtin.copy:
+        src: "{{ cert_dir }}/admin.kubeconfig"
+        dest: "/var/lib/kubernetes"
+        force: no
+  become: yes
+
+- name: Check presence of kube-apiserver service file
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/kube-apiserver.service"
+  register: kubeapiserver_service_file_stat
+
+- name: Create kube-apiserver service file
+  block:
+    - name: Copy kube-apiserver service file template
+      ansible.builtin.copy:
+        src: "{{ role_path }}/files/kube-apiserver.service"
+        dest: "/etc/systemd/system/"
+    - name: Replace in kube-apiserver service file - advertise address
+      ansible.builtin.lineinfile:
+        path: "/etc/systemd/system/kube-apiserver.service"
+        regexp: '^(.*)--advertise-address'
+        line: '\1--advertise-address={{ ip_int_address }} \\'
+        backrefs: yes
+    - name: Replace in kube-apiserver service file - etcd servers
+      ansible.builtin.lineinfile:
+        path: "/etc/systemd/system/kube-apiserver.service"
+        regexp: '^(.*)--etcd-servers'
+        line: '\1--etcd-servers={{ etcd_servers }} \\'
+        backrefs: yes
+  become: yes
+  when: not kubeapiserver_service_file_stat.stat.exists
+
+- name: Run kube-apiserver service
+  ansible.builtin.systemd:
+    name: kube-apiserver
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+
+- name: Check presence of kube-controller-manager service file
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/kube-controller-manager.service"
+  register: kubecontrollermanager_service_file_stat
+
+- name: Copy kube-controller-manager service file
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/kube-controller-manager.service"
+    dest: "/etc/systemd/system/"
+  become: yes
+  when: not kubecontrollermanager_service_file_stat.stat.exists
+
+- name: Run kube-controller-manager service
+  ansible.builtin.systemd:
+    name: kube-controller-manager
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+
+- name: Check presence of kube-scheduler service file
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/kube-scheduler.service"
+  register: kubescheduler_service_file_stat
+
+- name: Copy kube-scheduler service file
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/kube-scheduler.service"
+    dest: "/etc/systemd/system/"
+  become: yes
+  #when: not kubescheduler_service_file_stat.stat.exists
+
+- name: Run kube-scheduler service
+  ansible.builtin.systemd:
+    name: kube-scheduler
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes
+
+- name: Install ngnix
+  ansible.builtin.apt:
+    name: nginx
+    update_cache: yes
+  become: yes
+
+- name: Copy kubernetes health check config
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/kubernetes.default.svc.cluster.local"
+    dest: "/etc/nginx/sites-available/kubernetes.default.svc.cluster.local"
+    force: no 
+  become: yes
+
+- name: Link kubernetes health check config
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/kubernetes.default.svc.cluster.local"
+    dest: "/etc/nginx/sites-enabled/kubernetes.default.svc.cluster.local"
+    state: link
+  become: yes
+
+- name: Run ngnix service
+  ansible.builtin.systemd:
+    name: nginx
+    state: restarted
+    enabled: yes
+  become: yes
+
+- name: Authorize Kuberentes API Server for Kubelets API
+  block:
+    - name: Copy ClusterRole kube config
+      ansible.builtin.copy:
+        src: "{{ role_path }}/files/kubeletauth-clusterrole.kubeconfig"
+        dest: "/var/lib/kubernetes"
+        force: no
+      become: yes
+    - name: Copy ClusterRoleBinding kube config
+      ansible.builtin.copy:
+        src: "{{ role_path }}/files/kubeletauth-clusterrolebinding.kubeconfig"
+        dest: "/var/lib/kubernetes"
+        force: no
+      become: yes
+    - name: Create ClusterRole
+      ansible.builtin.shell:
+        cmd: kubectl apply --kubeconfig admin.kubeconfig -f kubeletauth-clusterrole.kubeconfig
+        chdir: "/var/lib/kubernetes"
+    - name: Create ClusterRoleBinding
+      ansible.builtin.shell:
+        cmd: kubectl apply --kubeconfig admin.kubeconfig -f kubeletauth-clusterrolebinding.kubeconfig
+        chdir: "/var/lib/kubernetes"

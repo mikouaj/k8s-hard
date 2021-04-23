@@ -3,5 +3,10 @@ all:
     k8s-controllers:
       hosts:
         controller1:
-  vars:
-    ansible_user: nick
+        controller2:
+        controller3:
+    k8s-workers:
+      hosts:
+        worker1:
+        worker2:
+        worker3:

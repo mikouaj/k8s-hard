@@ -1,3 +1,9 @@
+- hosts: clients
+  connection: local
+  gather_facts: no
+  roles:
+  - client
+
 - hosts: k8s-controllers
   roles:
   - k8s-controller

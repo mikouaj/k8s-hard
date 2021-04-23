@@ -1,0 +1,48 @@
+---
+- name: Create kube-configs fact
+  ansible.builtin.set_fact:
+    kube_configs: [
+     {name: "kube-proxy", server_address: "{{ hostvars[groups['k8s-controllers'][0]].ip_k8s_address }}"},
+     {name: "kube-controller-manager", server_address: "127.0.0.1"},
+     {name: "kube-scheduler", server_address: "127.0.0.1"},
+     {name: "admin", server_address: "127.0.0.1"}
+    ]
+
+- name: Update kube-configs fact with workers
+  ansible.builtin.set_fact:
+    kube_configs: "{{ kube_configs +  [{'name':item, 'server_address':hostvars[groups['k8s-controllers'][0]].ip_k8s_address }]}}"
+  with_items: "{{ groups['k8s-workers']}}"
+    
+- name: Check presence of kube-config files
+  ansible.builtin.stat:
+    path: "{{ cert_dir }}/{{ item.name }}.kubeconfig"
+  register: "kubeconfig_stat"
+  loop: "{{ kube_configs }}"
+
+- name: Generate kube-config files
+  include_tasks: kubeconfig.yml
+  when: not item.stat.exists
+  loop: "{{ kubeconfig_stat.results }}"
+
+- name: Check presence of encryption config 
+  ansible.builtin.stat:
+    path: "{{ cert_dir }}/encryption-config.yml"
+  register: "encryptionconfig_stat"
+
+- name: Create encryption config
+  block:
+  - name: Generate encryption key
+    ansible.builtin.shell:
+      cmd: head -c 32 /dev/urandom | base64
+    register: encryption_key_output
+  - name: Copy encryption-config template
+    ansible.builtin.copy:
+      src: "{{ role_path }}/files/encryption-config.yml"
+      dest: "{{ cert_dir }}/encryption-config.yml"
+  - name: "Update encryption-config file"
+    ansible.builtin.lineinfile:
+      path: "{{ cert_dir }}/encryption-config.yml"
+      regexp: '^(.*)secret:'
+      line: '\1secret: {{ encryption_key_output.stdout }}'
+      backrefs: yes
+  when: not encryptionconfig_stat.stat.exists

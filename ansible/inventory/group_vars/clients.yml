@@ -1,0 +1,3 @@
+---
+bin_dir: ~/.k8s-hard/bin
+cert_dir: ~/.k8s-hard/certs

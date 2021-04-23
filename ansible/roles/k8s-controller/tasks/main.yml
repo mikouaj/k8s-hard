@@ -1,3 +1,5 @@
-- name: store external ip address
-  ansible.builtin.shell:
-    cmd: echo {{ ansible_host }} >> /tmp/external_ip.txt
+- name: Set cert_dir fact
+  ansible.builtin.set_fact:
+    cert_dir: "{{ hostvars['127.0.0.1'].cert_dir }}"
+- import_tasks: etcd.yml
+- import_tasks: kubernetes.yml

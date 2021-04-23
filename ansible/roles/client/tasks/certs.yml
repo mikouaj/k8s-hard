@@ -1,0 +1,64 @@
+- name: Create certs directory
+  ansible.builtin.file:
+    path: "{{ cert_dir }}"
+    state: directory
+    mode: '0755'
+- name: Generate CA cert
+  block:
+    - name: Check if CA cert is present 
+      ansible.builtin.stat:
+        path: "{{ cert_dir }}/ca.pem"
+      register: cacrt_stat_result
+    - name: Generate CA cert
+      ansible.builtin.shell:
+        cmd: "{{ bin_dir }}/cfssl gencert -initca -config {{ role_path }}/files/ca-config.json {{ role_path }}/files/ca-csr.json | {{ bin_dir }}/cfssljson -bare ca"
+        chdir: "{{ cert_dir }}"
+      when: not cacrt_stat_result.stat.exists
+- name: Check presence of various client and server certs
+  ansible.builtin.stat:
+    path: "{{ cert_dir }}/{{ item }}.pem"
+  register: "cert_stat"
+  with_items:
+    - "admin"
+    - "kube-controller-manager"
+    - "kube-proxy"
+    - "kube-scheduler"
+    - "service-account"
+- name: Generate various client and server certs
+  ansible.builtin.shell:
+   cmd: "{{ bin_dir }}/cfssl gencert -ca {{ cert_dir }}/ca.pem -ca-key {{ cert_dir }}/ca-key.pem -config {{ role_path }}/files/ca-config.json -profile=kubernetes {{ role_path }}/files/{{ item.item }}-csr.json | {{ bin_dir }}/cfssljson -bare {{ item.item }}"
+   chdir: "{{ cert_dir }}"
+  when: not item.stat.exists
+  loop: "{{ cert_stat.results }}"
+
+- name: Check if Kubernetes API server cert is present 
+  ansible.builtin.stat:
+    path: "{{ cert_dir }}/kubernetes.pem"
+  register: kubernetescrt_stat_result
+- name: Generate Kubernetes API Server certificate
+  block:
+    - name: Set Kubernetes API server hostname fact
+      ansible.builtin.set_fact:
+        kubernetescrt_hosts: "127.0.0.1,kubernetes,kubernetes.default,kubernetes.default.svc,kubernetes.default.svc.cluster,kubernetes.svc.cluster.local,10.32.0.1"
+    - name: Update Kubernetes API server hostname fact with K8S cluster public IP
+      ansible.builtin.set_fact:
+        kubernetescrt_hosts: "{{ kubernetescrt_hosts }},{{ hostvars[groups['k8s-controllers'][0]].ip_k8s_address }}"
+    - name: Update Kubernetes API server hostname fact with internal IPs
+      ansible.builtin.set_fact:
+        kubernetescrt_hosts: "{{ kubernetescrt_hosts }},{{ hostvars[item].ip_int_address }}"
+      with_items: "{{ groups['k8s-controllers']}}"
+    - name: Generate Kubernetes API Server certificate
+      ansible.builtin.shell:
+        cmd: "{{ bin_dir }}/cfssl gencert -ca {{ cert_dir }}/ca.pem -ca-key {{ cert_dir }}/ca-key.pem -config {{ role_path }}/files/ca-config.json -hostname={{ kubernetescrt_hosts }} -profile=kubernetes {{ role_path }}/files/kubernetes-csr.json | {{ bin_dir }}/cfssljson -bare kubernetes"
+        chdir: "{{ cert_dir }}"
+  when: not kubernetescrt_stat_result.stat.exists
+
+- name: Check presence of Kubelet client certificates
+  ansible.builtin.stat:
+    path: "{{ cert_dir }}/{{ item }}.pem"
+  register: "kubeletcert_stat"
+  with_items: "{{ groups['k8s-workers']}}"
+- name: Generate Kubelet client certificates
+  include_tasks: certs-kubelet.yml
+  when: not item.stat.exists
+  loop: "{{ kubeletcert_stat.results }}"
