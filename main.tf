@@ -67,6 +67,17 @@ resource "google_compute_address" "k8s-address" {
   region = var.region
 }
 
+resource "google_compute_route" "k8s-worker-podsubnet" {
+  for_each = toset(var.k8s_workers)
+  depends_on = [
+    google_compute_subnetwork.backend-k8s
+  ]
+  name        = "k8s-podsubnet-${replace(var.k8s_worker_pod_cidrs[each.key], "/[.//]/", "-")}"
+  network     = google_compute_network.backend.id
+  next_hop_ip = var.k8s_worker_ip_int_addresses[each.key]
+  dest_range  = var.k8s_worker_pod_cidrs[each.key]
+}
+
 resource "google_compute_instance" "k8s-controller" {
   for_each     = toset(var.k8s_controllers)
   name         = "k8s-${each.key}"
@@ -98,6 +109,7 @@ resource "google_compute_instance" "k8s-controller" {
   }
   metadata = {
     ssh-keys = "${var.ssh_username}:${local.ssh_pubkey}"
+    VmDnsSetting = "GlobalDefault"
   }
 }
 
@@ -133,6 +145,7 @@ resource "google_compute_instance" "k8s-worker" {
   metadata = {
     ssh-keys = "${var.ssh_username}:${local.ssh_pubkey}"
     pod-cidr = var.k8s_worker_pod_cidrs[each.key]
+    VmDnsSetting = "GlobalDefault"
   }
 }
 

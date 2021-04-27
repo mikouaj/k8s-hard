@@ -1,0 +1,23 @@
+- name: Authorize Kuberentes API Server for Kubelets API
+  block:
+    - name: Copy ClusterRole kube config
+      ansible.builtin.copy:
+        src: "{{ role_path }}/files/kubeletauth-clusterrole.kubeconfig"
+        dest: "/var/lib/kubernetes"
+        force: no
+      become: yes
+    - name: Copy ClusterRoleBinding kube config
+      ansible.builtin.copy:
+        src: "{{ role_path }}/files/kubeletauth-clusterrolebinding.kubeconfig"
+        dest: "/var/lib/kubernetes"
+        force: no
+      become: yes
+    - name: Create ClusterRole
+      ansible.builtin.shell:
+        cmd: kubectl apply --kubeconfig admin.kubeconfig -f kubeletauth-clusterrole.kubeconfig
+        chdir: "/var/lib/kubernetes"
+    - name: Create ClusterRoleBinding
+      ansible.builtin.shell:
+        cmd: kubectl apply --kubeconfig admin.kubeconfig -f kubeletauth-clusterrolebinding.kubeconfig
+        chdir: "/var/lib/kubernetes"
+

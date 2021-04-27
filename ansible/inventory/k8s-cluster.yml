@@ -2,11 +2,11 @@ all:
   children:
     k8s-controllers:
       hosts:
-        controller1:
-        controller2:
-        controller3:
+        k8s-controller1:
+        k8s-controller2:
+        k8s-controller3:
     k8s-workers:
       hosts:
-        worker1:
-        worker2:
-        worker3:
+        k8s-worker1:
+        k8s-worker2:
+        k8s-worker3:

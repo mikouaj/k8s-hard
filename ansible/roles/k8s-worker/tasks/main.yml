@@ -1,0 +1,21 @@
+- name: Set cert_dir fact
+  ansible.builtin.set_fact:
+    cert_dir: "{{ hostvars['127.0.0.1'].cert_dir }}"
+
+- name: Install OS dependencies
+  ansible.builtin.apt:
+    name:
+      - socat
+      - conntrack
+      - ipset
+    update_cache: yes
+  become: yes
+
+- name: "Disable swap"
+  ansible.builtin.shell:
+    cmd: "swapoff -a"
+  become: yes
+
+- import_tasks: cni.yml
+- import_tasks: containerd.yml
+- import_tasks: kubernetes.yml

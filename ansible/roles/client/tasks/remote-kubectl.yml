@@ -1,0 +1,23 @@
+- name: Configure cluster
+  ansible.builtin.shell:
+    cmd: "{{ bin_dir }}/kubectl config set-cluster kubernetes-the-hard-way \
+    --certificate-authority=ca.pem \
+    --embed-certs=true \
+    --server=https://{{ hostvars[groups['k8s-controllers'][0]].ip_k8s_address }}:6443"
+    chdir: "{{ cert_dir }}"
+- name: Configure admin credentials
+  ansible.builtin.shell:
+    cmd: "{{ bin_dir }}/kubectl config set-credentials admin \
+    --client-certificate=admin.pem \
+    --client-key=admin-key.pem"
+    chdir: "{{ cert_dir }}"
+- name: Configure set context
+  ansible.builtin.shell:
+    cmd: "{{ bin_dir }}/kubectl config set-context kubernetes-the-hard-way \
+    --cluster=kubernetes-the-hard-way \
+    --user=admin"
+    chdir: "{{ cert_dir }}"
+- name: Configure use context
+  ansible.builtin.shell:
+    cmd: "{{ bin_dir }}/kubectl config use-context kubernetes-the-hard-way"
+    chdir: "{{ cert_dir }}"

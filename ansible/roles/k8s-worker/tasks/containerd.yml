@@ -1,0 +1,120 @@
+- name: Check existence of crictl binary
+  ansible.builtin.stat:
+    path: /usr/local/bin/crictl
+  register: crictl_stat
+
+- name: Install crictl
+  block:
+    - name: Download crictl binary
+      ansible.builtin.get_url:
+        url: https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.18.0/crictl-v1.18.0-linux-amd64.tar.gz
+        dest: /tmp
+    - name: Unpack crictl binary
+      ansible.builtin.unarchive:
+        src: /tmp/crictl-v1.18.0-linux-amd64.tar.gz
+        dest: /tmp
+        remote_src: yes
+    - name: Copy crictl binary
+      ansible.builtin.shell:
+        cmd: mv /tmp/crictl /usr/local/bin
+      become: yes
+    - name: Chmod crictl binary
+      ansible.builtin.file:
+        path: /usr/local/bin/crictl
+        owner: root
+        group: root
+        mode: '0755'
+      become: yes
+  when: not crictl_stat.stat.exists
+
+- name: Check existence of runc binary
+  ansible.builtin.stat:
+    path: /usr/local/bin/runc
+  register: runc_stat
+
+- name: Install runc binary
+  block:
+    - name: Download runc binary
+      ansible.builtin.get_url:
+        url: https://github.com/opencontainers/runc/releases/download/v1.0.0-rc91/runc.amd64
+        dest: /tmp
+    - name: Copy runc binary
+      ansible.builtin.shell:
+        cmd: mv /tmp/runc.amd64 /usr/local/bin/runc
+      become: yes
+    - name: Chmod runc binary
+      ansible.builtin.file:
+        path: /usr/local/bin/runc
+        state: file
+        owner: root
+        group: root
+        mode: '0755'
+      become: yes
+  when: not runc_stat.stat.exists
+
+- name: Check existence of containerd binary
+  ansible.builtin.stat:
+    path: /bin/containerd
+  register: containerd_stat
+
+- name: Install containerd
+  block:
+    - name: Download containerd binary
+      ansible.builtin.get_url:
+        url: https://github.com/containerd/containerd/releases/download/v1.3.6/containerd-1.3.6-linux-amd64.tar.gz
+        dest: /tmp
+    - name: Create temporary containerd directory
+      ansible.builtin.file:
+        path: /tmp/containerd
+        state: directory
+    - name: Unpack containerd
+      ansible.builtin.unarchive:
+        src: /tmp/containerd-1.3.6-linux-amd64.tar.gz
+        dest: /tmp/containerd
+        remote_src: yes
+    - name: List binaries in containerd /tmp
+      ansible.builtin.find:
+        paths: /tmp/containerd/bin
+        file_type: file
+      register: containerd_tmp_find
+    - name: Copy containerd binaries
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: /bin/
+        owner: root
+        group: root
+        mode: '0755'
+        remote_src: yes
+      loop: "{{ containerd_tmp_find.files }}"
+      become: yes
+    - name: Remove temporary containerd directory
+      ansible.builtin.file:
+        path: /tmp/containerd
+        state: absent
+  when: not containerd_stat.stat.exists
+
+- name: Create containerd configuration
+  block:
+    - name: Create containerd configuration directory
+      ansible.builtin.file:
+        path: /etc/containerd
+        state: directory
+    - name: Copy containerd configuration template
+      ansible.builtin.copy:
+        src: "{{ role_path }}/files/config.toml"
+        dest: "/etc/containerd/"
+  become: yes
+
+- name: Create containerd service
+  ansible.builtin.copy:
+    src: "{{ role_path }}/files/containerd.service"
+    dest: "/etc/systemd/system"
+  become: yes
+
+- name: Run containerd service
+  ansible.builtin.systemd:
+    name: containerd
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: yes

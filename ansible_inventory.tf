@@ -4,7 +4,7 @@ data "template_file" "ansible_inventory_k8s_controllers" {
   vars = {
     ip_ext_address = google_compute_instance.k8s-controller[each.key].network_interface[0].access_config[0].nat_ip
     ip_int_address = var.k8s_controller_ip_int_addresses[each.key]
-    ansible_user = var.ssh_username
+    ansible_user   = var.ssh_username
   }
 }
 
@@ -14,7 +14,7 @@ resource "null_resource" "ansible_inventory_k8s_controllers" {
     template_rendered = data.template_file.ansible_inventory_k8s_controllers[each.key].rendered
   }
   provisioner "local-exec" {
-    command = "echo '${data.template_file.ansible_inventory_k8s_controllers[each.key].rendered}' > 'ansible/inventory/host_vars/${each.key}.yml'"
+    command = "echo '${data.template_file.ansible_inventory_k8s_controllers[each.key].rendered}' > 'ansible/inventory/host_vars/k8s-${each.key}.yml'"
   }
 }
 
@@ -24,7 +24,8 @@ data "template_file" "ansible_inventory_k8s_workers" {
   vars = {
     ip_ext_address = google_compute_instance.k8s-worker[each.key].network_interface[0].access_config[0].nat_ip
     ip_int_address = var.k8s_worker_ip_int_addresses[each.key]
-    ansible_user = var.ssh_username
+    pod_cidr       = var.k8s_worker_pod_cidrs[each.key]
+    ansible_user   = var.ssh_username
   }
 }
 
@@ -34,7 +35,7 @@ resource "null_resource" "ansible_inventory_k8s_workers" {
     template_rendered = data.template_file.ansible_inventory_k8s_workers[each.key].rendered
   }
   provisioner "local-exec" {
-    command = "echo '${data.template_file.ansible_inventory_k8s_workers[each.key].rendered}' > 'ansible/inventory/host_vars/${each.key}.yml'"
+    command = "echo '${data.template_file.ansible_inventory_k8s_workers[each.key].rendered}' > 'ansible/inventory/host_vars/k8s-${each.key}.yml'"
   }
 }
 

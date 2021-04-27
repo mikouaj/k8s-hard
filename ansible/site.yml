@@ -2,8 +2,16 @@
   connection: local
   gather_facts: no
   roles:
-  - client
+    - client
 
 - hosts: k8s-controllers
   roles:
-  - k8s-controller
+    - k8s-controller
+
+- hosts: k8s-controller1
+  roles:
+    - k8s-single-controller
+
+- hosts: k8s-workers
+  roles:
+    - k8s-worker

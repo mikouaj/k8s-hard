@@ -2,3 +2,4 @@
 ansible_host: ${ip_ext_address}
 ansible_user: ${ansible_user}
 ip_int_address: ${ip_int_address}
+pod_cidr: ${pod_cidr}
